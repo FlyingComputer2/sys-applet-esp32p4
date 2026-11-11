@@ -2,10 +2,12 @@
 
 System queries for an ESP32-P4 firmware: per-task CPU, heap, where each task's stack lives,
 uptime, reset reason and version. The applet serves them as `get sys <key>` on a UDP console
-and, if configured, on an m-plane over two named [bfc](https://github.com/therooftopprinz/BFC)
-queues (for example a winject-l3 `QUEUE_FORWARDING` upstream, so the board can be asked over
-the radio). Both run on a named `bfc::default_reactor<>`. Each firmware creates its own applet
-and adds its own board-specific keys; this repo holds only what is the same on every P4.
+and, if configured, on an m-plane over an L3 `QUEUE_FORWARDING` upstream's two named
+[bfc](https://github.com/therooftopprinz/BFC) queues, so the board can be asked over the radio.
+It is a standard P4 applet: it takes the host's reactor from `bfc::default_reactor_registry` by
+name and registers its console and m-plane on it; it starts no task or thread of its own. Each
+firmware creates its own applet and adds its own board-specific keys; this repo holds only what
+is the same on every P4.
 
 Illustrative replies (values made up):
 
@@ -55,18 +57,20 @@ list(APPEND EXTRA_COMPONENT_DIRS ${sys_applet_SOURCE_DIR}/idf/sys_applet)
 
 static sys_applet::Applet sys;
 sys_applet::config cfg;
-cfg.reactor = "apps";            // bfc::default_reactor_registry name
-cfg.console = "0.0.0.0:5130";    // empty = none
-cfg.mplane_out = "sys_mp_tx";    // optional m-plane queues (bfc queue registry)
-cfg.mplane_in = "sys_mp_rx";
+cfg.mplane_to_l3 = "sys_mp_tx";    // optional: the upstream's rx (bfc queue registry)
+cfg.mplane_from_l3 = "sys_mp_rx";  // and its tx
+cfg.reactor = "apps";              // bfc::default_reactor_registry name
+cfg.console = "0.0.0.0:5130";
 sys.add_query("eth", [] { return std::string("up"); });  // board-specific
 if (!sys.configure(cfg) || !sys.start()) { /* missing reactor / queue, or bind failed */ }
 // ... then run the reactor.
 ```
 
-`start()` must run before the reactor thread does (bfc registration is not thread-safe); after
-that every request is handled on the reactor thread. The applet lives for the program, so keep
-it static. The functions in `sys_applet/queries.hpp` can be called directly too, for example
+`configure()` finds the reactor and the queues (once only); `start()` registers on the reactor
+and must run before the reactor thread does (bfc registration is not thread-safe). After that
+every request, including board `add_query()` functions, is handled on the reactor thread. The
+applet lives for the program (no stop), so keep it static. The public header does not include
+bfc. The functions in `sys_applet/queries.hpp` can be called directly too, for example
 for a periodic serial line (`cpu_window` keeps its own window per caller).
 
 The stack-region address ranges are the ESP32-P4's.
