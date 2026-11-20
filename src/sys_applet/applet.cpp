@@ -40,7 +40,23 @@ std::string err(int e, const char* name)
 
 std::string usage()
 {
-    return "err usage: get sys <key> | get sys keys | nodes | ping\n";
+    return "err usage: get sys <key> | set sys <key> <value> | get sys keys | nodes | ping\n";
+}
+
+const char* errno_name(int e)
+{
+    switch (e)
+    {
+    case EINVAL: return "EINVAL";
+    case EBUSY: return "EBUSY";
+    case ENODEV: return "ENODEV";
+    case ENOENT: return "ENOENT";
+    case EIO: return "EIO";
+    case ENOTSUP: return "ENOTSUP";
+    case ENOMEM: return "ENOMEM";
+    case EALREADY: return "EALREADY";
+    default: return "ERROR";
+    }
 }
 
 std::vector<std::string_view> words(std::string_view line)
@@ -102,6 +118,7 @@ struct Applet::Impl
     std::shared_ptr<reactor_t> reactor;
     std::shared_ptr<queue_t> to_l3, from_l3;
     std::vector<std::pair<std::string, query_fn>> queries;
+    std::vector<std::pair<std::string, set_fn>> controls;
     cpu_window cpu;
     bool configured = false;
 
@@ -123,7 +140,23 @@ std::string Applet::Impl::handle(std::string_view line)
     }
     if (w.size() >= 3 && w[0] == "set")
     {
-        return w[1] == "sys" ? err(ENOTSUP, "ENOTSUP") : err(ENOENT, "ENOENT");
+        if (w[1] != "sys")
+        {
+            return err(ENOENT, "ENOENT");
+        }
+        if (w.size() != 4)
+        {
+            return usage();
+        }
+        for (const auto& c : controls)
+        {
+            if (c.first == w[2])
+            {
+                const int r = c.second(std::string(w[3]));
+                return r == 0 ? std::string("ok\n") : err(-r, errno_name(-r));
+            }
+        }
+        return err(ENOTSUP, "ENOTSUP");
     }
     if (w.size() != 3 || w[0] != "get")
     {
@@ -227,6 +260,19 @@ void Applet::add_query(std::string key, query_fn fn)
         }
     }
     impl_->queries.emplace_back(std::move(key), std::move(fn));
+}
+
+void Applet::add_control(std::string key, set_fn fn)
+{
+    for (auto& c : impl_->controls)
+    {
+        if (c.first == key)
+        {
+            c.second = std::move(fn);
+            return;
+        }
+    }
+    impl_->controls.emplace_back(std::move(key), std::move(fn));
 }
 
 bool Applet::configure(const config& cfg)
