@@ -3,6 +3,7 @@
 // task of its own.
 //
 //   get sys <key>      "ok <value>" or "err <errno> <NAME>"
+//   set sys <key> <v>  "ok" or "err <errno> <NAME>" (firmware controls only)
 //   get sys keys       "ok <key> <key> ..."
 //   nodes              "ok sys"
 //   ping               "ok pong"
@@ -38,6 +39,11 @@ struct config
 // (ENODATA). Runs on the reactor thread.
 using query_fn = std::function<std::string()>;
 
+// A board-specific `set sys <key> <value>`: 0 or a negative errno. Runs on the
+// reactor thread, so it must not block (start long work elsewhere and report it
+// through a query).
+using set_fn = std::function<int(const std::string& value)>;
+
 // The system applet: configure() finds the reactor and the m-plane queues;
 // start() registers the console and the m-plane on the reactor. Lives for the
 // life of the program (no stop).
@@ -50,6 +56,9 @@ public:
     Applet& operator=(const Applet&) = delete;
     // Adds or replaces `get sys <key>`; before start().
     void add_query(std::string key, query_fn fn);
+    // Adds or replaces `set sys <key> <value>`; before start(). `get sys <key>`
+    // stays the query of that name, if any.
+    void add_control(std::string key, set_fn fn);
     // False when there is no such reactor or m-plane queue (once only).
     bool configure(const config& cfg);
     // False when not configured or the console cannot be bound.

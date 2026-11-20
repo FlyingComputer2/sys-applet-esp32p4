@@ -35,7 +35,9 @@ vstreamer's m-plane). Keys:
 | `reset` | reason of the last reset (`poweron`, `software`, `panic`, `task_wdt`, ...). |
 | `version` | app project, version, build time, IDF version, running OTA partition. |
 
-There is no `set`, and no authentication: the queries only read the board's state. Over a
+`set sys <key> <value>` (`ok` or `err <errno> <NAME>`) exists only for controls a firmware adds
+with `add_control()`; this repo adds none. There is no authentication: the built-in queries only
+read the board's state, but a firmware's controls can change it. Over a
 winject-l3 upstream a reply is one datagram, so one longer than L3's application limit (1445 bytes)
 is dropped; `cpu` and `stack` are about 25 bytes per task.
 
